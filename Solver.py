@@ -65,9 +65,11 @@ def solve_to(func, t1, t2, x, deltat_max, method):
 def solve_ode(func, t1, t2, x0, stepsizes, method='RK4'):
     tls = []
     sols = []
+    
     for size in stepsizes:
         tls.append(solve_to(func, t1, t2, x0, size, method)[0])
         sols.append(solve_to(func, t1, t2, x0, size, method)[1])
+        
     return tls, sols
 
 #set up the ode
