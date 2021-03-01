@@ -43,7 +43,6 @@ def solve_to(func, t1, t2, v, deltat_max_orig, method='RK4'):
                 deltat_max = t2 - t1
                 t1, x = euler_step(func, t1, v, deltat_max)
                 vl.append(v)
-
                 tl.append(t1)
 
     if method == 'RK4':
