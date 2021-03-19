@@ -8,11 +8,11 @@ from datetime import datetime
 
 def plot_sols(plot_sets):
     for plot_set in plot_sets:
-        plt.plot(plot_set[0], plot_set[1], label= plot_set[2])
+        plt.plot(plot_set[0], plot_set[1], 'x-', label= plot_set[2])
 
     plt.plot(np.linspace(0, 1, 100), np.exp(np.linspace(0, 1, 100)), label='Actual')
     plt.legend()
-    plt.yscale('log')
+    #plt.yscale('log')
     plt.show()
 def plot_errs(stepsize, err, method):
     plt.plot(stepsize, err, 'ro-')
@@ -39,10 +39,10 @@ def dvdt(t, vect):
 def f_actual(t):
     return np.exp(t)
 
-steps = [1 * (10**(-1*i)) for i in range(7)] # Declare list of possible step
+steps = [1 * (10**(-1*i)) for i in range(4)] # Declare list of possible step
                                              # sizes
 
-methods = ['Euler', 'RK4'] # List of methods to compare
+methods = ['Euler'] # List of methods to compare
 solutions = [] # Initialise solution set
 
 # We need to run this method for each solving method - Euler and RK4
@@ -56,7 +56,7 @@ def main():
         errs = [get_abs_err_av(tls[i], sols[i], f_actual) for i in range(len(tls))]
         # plot the errors for the stepsizes
         # plot_errs(steps, errs, method)
-        plot_err_compare(steps, errs, method)
+        # plot_err_compare(steps, errs, method)
 
         for i in range(len(tls)):
 
@@ -65,16 +65,16 @@ def main():
 
             solutions.append([tls[i], sols[i], name])
 
-    #plot_sols(solutions)
-    plt.ylabel('Average Absolute Error')
-    plt.xlabel('Step Size')
-    plt.title('Error vs. Step Size')
-
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.legend()
-    plt.grid()
-    plt.show()
+    plot_sols(solutions)
+    # plt.ylabel('Average Absolute Error')
+    # plt.xlabel('Step Size')
+    # plt.title('Error vs. Step Size')
+    #
+    # plt.yscale('log')
+    # plt.xscale('log')
+    # plt.legend()
+    # plt.grid()
+    # plt.show()
 
     # SPEED COMPARE
     # now = datetime.now()

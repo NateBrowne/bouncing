@@ -7,11 +7,11 @@ from ODE_Utils import *
 def dvdt(t, vect):
 
     a = 1
-    b = 0.26
     d = 0.1
 
     x = vect[0]
     y = vect[1]
+
     dxdt = x*(1-x) - a*x*y/(d+x)
     dydt = b*y*(1- (y/x))
 
@@ -20,25 +20,62 @@ def dvdt(t, vect):
 @logger.catch
 def main():
 
-    tl, vl = solve_to(dvdt, 0, 400, [.3, .3], 0.001, method='RK4')
-    vl = np.transpose(vl[1])
+    global b
+    b = 0.1
 
-    ##### PLOT system wrt time
-    # plt.plot(tl, vl[0], label='Prey')
-    # plt.plot(tl, vl[1], label='Predator')
-    #
-    # plt.ylabel('Population')
-    # plt.xlabel('Time')
-    #
-    # plt.title('Lotka-Volterra, b = 0.5')
-    # plt.legend()
+    # solve the system
+    tl, vl = solve_to(dvdt, 0, 150, [.3, .3], 0.001)
+    vl = np.transpose(vl) # transpose to manipulate as we please
 
-    ##### PLOT orbit
+    # find start conds and period of a periodic orbit
+    period, start_conds = isolate_orbit(tl, vl)
+    print('Period: ', period)
+
+    #### PLOT system wrt time
+    plt.plot(tl, vl[0], label='Prey')
+    plt.plot(tl, vl[1], label='Predator')
+    plt.ylabel('Population')
+    plt.xlabel('Time')
+    plt.grid()
+    plt.title('Lotka-Volterra, b = 0.1, no shoot')
+    plt.legend()
+    plt.show()
+
+    #### PLOT orbit
     plt.plot(vl[0], vl[1], label='Orbit')
-    plt.xlabel('Predator')
-    plt.ylabel('Prey')
+    plt.xlabel('Prey')
+    plt.ylabel('Predator')
+    plt.title('Phase portrait b = 0.1, no shoot')
+    plt.grid()
+    plt.show()
 
-    plt.title('Periodic orbit b = 0.1')
+    # guess the right ICs
+    guess = [.3, .3]
+    # find the right ICs that lead to the same period orbit as earlier
+    ics = shoot_ics(dvdt, period, guess)
+    print('\nClosest ICs:')
+    print('Prey:', ics[0], ' Pred: ', ics[1])
+
+    # solve the system with new ICs
+    tl, vl = solve_to(dvdt, 0, 150, ics, 0.001)
+    vl = np.transpose(vl) # transpose to manipulate as we please
+
+    #### PLOT system wrt time
+    plt.plot(tl, vl[0], label='Prey')
+    plt.plot(tl, vl[1], label='Predator')
+    plt.ylabel('Population')
+    plt.xlabel('Time')
+    plt.grid()
+    plt.title('Lotka-Volterra, b = 0.1 with shot ICs')
+    plt.legend()
+    plt.show()
+
+    #### PLOT orbit
+    plt.plot(vl[0], vl[1], label='Orbit')
+    plt.xlabel('Prey')
+    plt.ylabel('Predator')
+    plt.title('Phase portrait b = 0.1 with shot ICs')
+    plt.grid()
     plt.show()
 
 if __name__ == '__main__':

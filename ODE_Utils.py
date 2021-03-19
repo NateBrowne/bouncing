@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.optimize import fsolve
 
 #################       STEP METHODS      #####################################
 # inputs gradient function at 2, current vector x, y, current t, and the step
@@ -56,7 +57,7 @@ def solve_to(func, t1, t2, v, deltat_max_orig, method='RK4'):
                 t1, v = rk4_step(func, t1, v, deltat_max)
                 vl.append(v)
                 tl.append(t1)
-    print('Final sol by ', method, ' with stepsize ', deltat_max_orig, ': ', vl[-1][0])
+    #print('Final sol by ', method, ' with stepsize ', deltat_max_orig, ': ', vl[-1][0])
     return tl, vl
 
 # gives sols from t = 0, t = 1, t = 2, ...  t = t as a list
@@ -72,6 +73,50 @@ def solve_ode(func, t1, t2, v0, stepsizes, method='RK4'):
         sols.append(sol)
     return tls, sols
 
+
+# Given a differential system, a period of the limit cycle, and a guess at some
+# initial conditions, the function will return some initial conditions that
+# lead the system straight into a limit cycle with the required period
+
+# User may also select a change tolerance between iters to finish the root
+# finding process
+def shoot_ics(func, period, guess, xtol=1.0e-02):
+
+    def F(t, guess):
+        # Grab the last value of the solve
+        return solve_to(func, 0, t, guess, 0.001)[1][-1]
+
+    def G(guess):
+        return guess - F(period, guess)
+
+    ics = fsolve(G, guess, xtol=xtol)
+    return ics
+
+##################  PERIOD FINDER   #################################
+def isolate_orbit(iv, dvs):
+    # grab the first dep variable
+    fdv = dvs[0]
+
+    # initialise list of peak values and an index to trace them to
+    peak_times = []
+    index = []
+
+    # initialise the list of start conds
+    start_conds = []
+
+    # loop through the dep var
+    for i in range(1, len(iv)-1):
+
+        # find the peaks and add them to the peak list
+        if fdv[i] > fdv[i-1] and fdv[i] > fdv[i+1]:
+            peak_times.append(iv[i])
+            index.append(i)
+
+    # Find the dep var values at the last index
+    for dv in dvs:
+        start_conds.append(dv[index[-1]])
+
+    return peak_times[-1] - peak_times[-2], start_conds
 
 ###############         ERROR FINDER    #######################################
 # finds average absolute error for an integrated solution
