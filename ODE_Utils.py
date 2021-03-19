@@ -57,7 +57,8 @@ def solve_to(func, t1, t2, v, deltat_max_orig, method='RK4'):
                 t1, v = rk4_step(func, t1, v, deltat_max)
                 vl.append(v)
                 tl.append(t1)
-    #print('Final sol by ', method, ' with stepsize ', deltat_max_orig, ': ', vl[-1][0])
+
+    vl = np.transpose(vl)
     return tl, vl
 
 # gives sols from t = 0, t = 1, t = 2, ...  t = t as a list
@@ -80,7 +81,11 @@ def solve_ode(func, t1, t2, v0, stepsizes, method='RK4'):
 
 # User may also select a change tolerance between iters to finish the root
 # finding process
-def shoot_ics(func, period, guess, xtol=1.0e-02):
+def shooting(func, guess, xtol=1.0e-02):
+
+    # solve once to find the period of the orbit
+    tl, vl = solve_to(dvdt, 0, 150, [.3, .3], 0.001)
+    period = isolate_orbit(tl, vl)[0]
 
     def F(t, guess):
         # Grab the last value of the solve

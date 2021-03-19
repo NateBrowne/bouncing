@@ -25,7 +25,6 @@ def main():
 
     # solve the system
     tl, vl = solve_to(dvdt, 0, 150, [.3, .3], 0.001)
-    vl = np.transpose(vl) # transpose to manipulate as we please
 
     # find start conds and period of a periodic orbit
     period, start_conds = isolate_orbit(tl, vl)
@@ -50,9 +49,10 @@ def main():
     plt.show()
 
     # guess the right ICs
-    guess = [.3, .3]
+    u0 = [.3, .3]
+
     # find the right ICs that lead to the same period orbit as earlier
-    ics = shoot_ics(dvdt, period, guess)
+    ics = shooting(dvdt, u0)
     print('\nClosest ICs:')
     print('Prey:', ics[0], ' Pred: ', ics[1])
 
