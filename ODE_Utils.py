@@ -1,33 +1,29 @@
 import numpy as np
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, fmin
+import warnings
 
 #################       STEP METHODS      #####################################
-# inputs gradient function at 2, current vector x, y, current t, and the step
-# size
-def euler_step(func, t, v, h):
-    v = v + h * func(t, v)
+def euler_step(func, t, v, h, **kwargs):
+    v = v + h * func(t, v, **kwargs)
     t = t + h
     return t, v
-def rk4_step(func, t, v, h):
-    k1 = h * func(t, v)
-    k2 = h * func(t + h/2, v + k1/2)
-    k3 = h * func(t + h/2, v + k2/2)
-    k4 = h * func(t + h, v + k3)
+
+def rk4_step(func, t, v, h, **kwargs):
+    k1 = h * func(t, v, **kwargs)
+    k2 = h * func(t + h/2, v + k1/2, **kwargs)
+    k3 = h * func(t + h/2, v + k2/2, **kwargs)
+    k4 = h * func(t + h, v + k3, **kwargs)
     v = v + (k1 + 2*k2 + 2*k3 + k4) / 6
     t = t+h
     return t, v
 
-
 ################        SOLVERS         #######################################
-# rescales dt to finish closer to the bound
 def rescale_dt(t1, t2, deltat_max):
     if deltat_max % (t2-t1) != 0:
         deltat_max = (t2-t1) / np.ceil((t2-t1) / deltat_max)
     return deltat_max, np.round((t2-t1)/deltat_max)
 
-# solves between two time bounds; t1 (start) and t2 (end); returns 2 lists in
-# tuple
-def solve_to(func, t1, t2, v, deltat_max_orig, method='RK4'):
+def solve_to(func, t1, t2, v, deltat_max_orig=0.01, method='RK4', **kwargs):
     tl = [t1]
     vl = [v]
     # rescale dt
@@ -37,35 +33,68 @@ def solve_to(func, t1, t2, v, deltat_max_orig, method='RK4'):
         # if they become irrational after rescaling
         while t1 < t2:
             if t1 + deltat_max <= t2:
-                t1, v = euler_step(func, t1, v, deltat_max)
+                t1, v = euler_step(func, t1, v, deltat_max, **kwargs)
                 vl.append(v)
                 tl.append(t1)
             else:
                 deltat_max = t2 - t1
-                t1, x = euler_step(func, t1, v, deltat_max)
+                t1, x = euler_step(func, t1, v, deltat_max, **kwargs)
                 vl.append(v)
                 tl.append(t1)
 
     if method == 'RK4':
         while t1 < t2:
             if t1 + deltat_max <= t2:
-                t1, v = rk4_step(func, t1, v, deltat_max)
+                t1, v = rk4_step(func, t1, v, deltat_max, **kwargs)
                 vl.append(v)
                 tl.append(t1)
             else:
                 deltat_max = t2 - t1
-                t1, v = rk4_step(func, t1, v, deltat_max)
+                t1, v = rk4_step(func, t1, v, deltat_max, **kwargs)
                 vl.append(v)
                 tl.append(t1)
 
-    vl = np.transpose(vl)
+        vl = np.transpose(vl)
     return tl, vl
 
-# gives sols from t = 0, t = 1, t = 2, ...  t = t as a list
-# depending on a list of stepsizes fed in
-# works for 1-d ODE but also n-dimension ODEs
-# method defaults to RK4, func should return all first order derivatives
 def solve_ode(func, t1, t2, v0, stepsizes, method='RK4'):
+    #############################
+    # DOES NOT WORK WITH IMPROVED SOLVETO - WILL ADAPT
+    #############################
+
+    """
+    A function that solves an ODE between two bounds for a variety of stepsizes.
+
+    Parameters
+    ----------
+    func : function
+        The ODE system to solve. The ode function should take two parameters,
+        the independent variable and a list of dependent variables, and return
+        the right-hand side of the ODE as a numpy.array.
+
+    t1 : float
+        The start value of the independent variable
+
+    t2 : float
+        The final value of the independent variable
+
+    v0 : numpy.array
+        A numpy.array of the initial values of the dependent variables
+
+    method : string, optional
+        All integration methods will be done using the RK4 method by default,
+        but can be done by Euler if the argument 'Euler' is passed.
+
+    step : float, optional
+        The stepsize to be used in the integration, defaults to 0.001
+
+    Returns
+    -------
+    Returns a numpy.array containing the corrected initial values
+    for the limit cycle. If the numerical root finder failed, the
+    returned array is empty.
+    """
+
     tls = []
     sols = []
     for size in stepsizes:
@@ -74,57 +103,160 @@ def solve_ode(func, t1, t2, v0, stepsizes, method='RK4'):
         sols.append(sol)
     return tls, sols
 
+def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', **kwargs):
+    """
+    A function that uses numerical shooting to find limit cycles of
+    a specified ODE.
 
-# Given a differential system, a period of the limit cycle, and a guess at some
-# initial conditions, the function will return some initial conditions that
-# lead the system straight into a limit cycle with the required period
+    Parameters
+    ----------
+    func : function
+        The ODE system to apply shooting to. The ode function should take
+        a single parameter (the state vector) and return the
+        right-hand side of the ODE as a numpy.array.
 
-# User may also select a change tolerance between iters to finish the root
-# finding process
-def shooting(func, guess, xtol=1.0e-02):
+    u0 : numpy.array
+        An initial guess at the initial values for the limit cycle.
 
-    # solve once to find the period of the orbit
-    tl, vl = solve_to(dvdt, 0, 150, [.3, .3], 0.001)
-    period = isolate_orbit(tl, vl)[0]
+    t2 : float, optional
+        A second time to which system will be solved to find a min/max if need be
 
-    def F(t, guess):
+    xtol : float, optional
+        The root-finding calculation will terminate if the relative error
+        between two consecutive iterates is at most xtol.
+
+    condeq : integer, optional
+        The equation in the system to look at for the phase condition. For
+        example, if a user wanted to use the second equation in the system, they
+        would pass a 1. Defaults to zero
+
+    cond : string or float, optional
+        Defaults to 'min' which starts the solution at it's minimum value.
+        Similarly, if 'max' is passed, the selected equation solution will start
+        at a maximum.
+
+        If a float is passed, the selected equation will start at the float
+        value. If outside the range, the closest of the max or min will be
+        chosen instead.
+
+    Returns
+    -------
+    Returns a numpy.array containing the corrected initial values
+    for the limit cycle. If the numerical root finder failed, the
+    returned array is empty.
+    """
+
+    tl, vl = solve_to(func, 0, t2, u0, **kwargs)
+    orbit = isolate_orbit(tl, vl[condeq])
+    period = orbit.period
+
+    if type(cond) == str:
+        if cond == 'max':
+            intercept = orbit.max_height
+        elif cond == 'min':
+            intercept = orbit.min_height
+    else:
+        if cond > orbit.max_height:
+            intercept = orbit.max_height
+        elif cond < orbit.min_height:
+            intercept = orbit.min_height
+        else:
+            intercept = cond
+
+    def F(u0, T):
         # Grab the last value of the solve
-        return solve_to(func, 0, t, guess, 0.001)[1][-1]
+        tl, vl = solve_to(func, 0, T, u0, **kwargs)
+        return np.array([v[-1] for v in vl])
 
-    def G(guess):
-        return guess - F(period, guess)
+    def G(u0):
+        u0[condeq] = intercept
+        return u0 - F(u0, period)
 
-    ics = fsolve(G, guess, xtol=xtol)
-    return ics
+    new_vect = fsolve(G, u0, xtol=xtol)
+
+    return new_vect
 
 ##################  PERIOD FINDER   #################################
-def isolate_orbit(iv, dvs):
-    # grab the first dep variable
-    fdv = dvs[0]
+# Wrapper class for tidying up orbit returns
+class Orbit(object):
+    def __init__(self, period, max_height, min_height):
+        self.period = period
+        self.max_height = max_height
+        self.min_height = min_height
 
-    # initialise list of peak values and an index to trace them to
+def isolate_orbit(iv, dv, peak_tol=0.001, **kwargs):
+    """
+    A function that uses numerical shooting to find limit cycles of
+    a specified ODE.
+
+    Parameters
+    ----------
+    iv : array
+        The idependent variable; i.e. time domain
+
+    dv : array
+        The variable to find the period and heights of
+
+    peak_tol : float, optional
+        The function will print a warning if periodic measurements
+        such as period and peak/trough heights do not converge within
+        this tolerance
+
+    Returns
+    -------
+    .period : float
+        The period of the function measured peak-to-peak
+
+    .max_height : float
+        The value of the dependent variable at its peak
+
+    .min_height : float
+        The value of the dependent variable at a trough
+    """
+
+    # initialise list of peak values and an index to trace them to as well as heights
     peak_times = []
-    index = []
+    peak_index = []
+    peak_heights = []
 
-    # initialise the list of start conds
-    start_conds = []
+    trough_times = []
+    trough_index = []
+    trough_heights = []
 
     # loop through the dep var
     for i in range(1, len(iv)-1):
 
         # find the peaks and add them to the peak list
-        if fdv[i] > fdv[i-1] and fdv[i] > fdv[i+1]:
+        if dv[i] > dv[i-1] and dv[i] > dv[i+1]:
             peak_times.append(iv[i])
-            index.append(i)
+            peak_index.append(i)
+            peak_heights.append(dv[i])
 
-    # Find the dep var values at the last index
-    for dv in dvs:
-        start_conds.append(dv[index[-1]])
+        # find troughs and add them to trough list
+        elif dv[i] < dv[i-1] and dv[i] < dv[i+1]:
+            trough_times.append(iv[i])
+            trough_index.append(i)
+            trough_heights.append(dv[i])
 
-    return peak_times[-1] - peak_times[-2], start_conds
+    # create wavelength values from final peaks and final troughs
+    peak_wlen = peak_times[-1] - peak_times[-2]
+    trough_wlen = trough_times[-1] - trough_times[-2]
+
+    # find the float values of the period and the trough/peak heights
+    period = peak_wlen
+    max_height = peak_heights[-1]
+    min_height = trough_heights[-1]
+
+    peak_err = abs((peak_heights[-1] - peak_heights[-2]) / peak_heights[-1])
+
+    if abs((peak_wlen - trough_wlen) / peak_wlen) > peak_tol:
+        print('WARNING: Wavelength derived from peaks and troughs differ by more than desired error tolerance. Consider solving over a greater range of values or choose a different initial guess')
+    if peak_err > peak_tol:
+        print('WARNING: Final two peak heights differ by more than desired error tolerance. Consider solving over a greater range of values or choose a different initial guess')
+
+    return Orbit(period, max_height, min_height)
 
 ###############         ERROR FINDER    #######################################
-# finds average absolute error for an integrated solution
 def get_abs_err_av(tl, sol, func):
     errors = []
     for i in range(len(tl)):

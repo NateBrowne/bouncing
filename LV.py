@@ -4,10 +4,7 @@ import matplotlib.pyplot as plt
 from ODE_Utils import *
 
 #set up the ode system in one function
-def dvdt(t, vect):
-
-    a = 1
-    d = 0.1
+def dvdt(t, vect, a = 1, b = .1, d = .1):
 
     x = vect[0]
     y = vect[1]
@@ -20,15 +17,10 @@ def dvdt(t, vect):
 @logger.catch
 def main():
 
-    global b
-    b = 0.1
-
     # solve the system
-    tl, vl = solve_to(dvdt, 0, 150, [.3, .3], 0.001)
-
+    tl, vl = solve_to(dvdt, 0, 150, [.3, .3])
     # find start conds and period of a periodic orbit
-    period, start_conds = isolate_orbit(tl, vl)
-    print('Period: ', period)
+    orbit = isolate_orbit(tl, vl[0])
 
     #### PLOT system wrt time
     plt.plot(tl, vl[0], label='Prey')
@@ -49,16 +41,15 @@ def main():
     plt.show()
 
     # guess the right ICs
-    u0 = [.3, .3]
+    u0 = np.array([.3, .3])
 
     # find the right ICs that lead to the same period orbit as earlier
-    ics = shooting(dvdt, u0)
+    ics = shooting(dvdt, u0, cond=1000)
     print('\nClosest ICs:')
     print('Prey:', ics[0], ' Pred: ', ics[1])
 
     # solve the system with new ICs
-    tl, vl = solve_to(dvdt, 0, 150, ics, 0.001)
-    vl = np.transpose(vl) # transpose to manipulate as we please
+    tl, vl = solve_to(dvdt, 0, orbit.period, ics)
 
     #### PLOT system wrt time
     plt.plot(tl, vl[0], label='Prey')
