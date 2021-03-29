@@ -44,7 +44,7 @@ def main():
     u0 = np.array([.3, .3])
 
     # find the right ICs that lead to the same period orbit as earlier
-    ics = shooting(dvdt, u0, cond=1000)
+    ics = shooting(dvdt, u0, cond='max')
     print('\nClosest ICs:')
     print('Prey:', ics[0], ' Pred: ', ics[1])
 

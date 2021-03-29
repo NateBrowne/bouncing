@@ -2,6 +2,8 @@ import numpy as np
 from scipy.optimize import fsolve, fmin
 import warnings
 
+warnings.filterwarnings('ignore')
+
 #################       STEP METHODS      #####################################
 def euler_step(func, t, v, h, **kwargs):
     v = v + h * func(t, v, **kwargs)
@@ -103,6 +105,11 @@ def solve_ode(func, t1, t2, v0, stepsizes, method='RK4'):
         sols.append(sol)
     return tls, sols
 
+class Shot_Sol(object):
+    def __init__(self, ics, period):
+        self.ics = ics
+        self.period = period
+
 def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', **kwargs):
     """
     A function that uses numerical shooting to find limit cycles of
@@ -146,6 +153,12 @@ def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', **kwargs):
     returned array is empty.
     """
 
+    try:
+        func(0, u0)
+    except:
+        print('WARNING: initial conditions are of wrong dimension for your system.')
+        exit()
+
     tl, vl = solve_to(func, 0, t2, u0, **kwargs)
     orbit = isolate_orbit(tl, vl[condeq])
     period = orbit.period
@@ -172,9 +185,12 @@ def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', **kwargs):
         u0[condeq] = intercept
         return u0 - F(u0, period)
 
-    new_vect = fsolve(G, u0, xtol=xtol)
+    try:
+        new_vect = fsolve(G, u0, xtol=xtol)
+        return Shot_Sol(np.round(new_vect, 6), period)
+    except:
+        print('WARNING: numerical root finder has not converged')
 
-    return new_vect
 
 ##################  PERIOD FINDER   #################################
 # Wrapper class for tidying up orbit returns
