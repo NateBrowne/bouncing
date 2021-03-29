@@ -105,6 +105,8 @@ def solve_ode(func, t1, t2, v0, stepsizes, method='RK4'):
         sols.append(sol)
     return tls, sols
 
+################     SHOOTING METHOD     ######################################
+# Wrapper class for returns from the shooting method
 class Shot_Sol(object):
     def __init__(self, ics, period):
         self.ics = ics
@@ -192,7 +194,7 @@ def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', **kwargs):
         print('WARNING: numerical root finder has not converged')
 
 
-##################  PERIOD FINDER   #################################
+##################  PERIOD FINDER   ###########################################
 # Wrapper class for tidying up orbit returns
 class Orbit(object):
     def __init__(self, period, max_height, min_height):
@@ -271,6 +273,46 @@ def isolate_orbit(iv, dv, peak_tol=0.001, **kwargs):
         print('WARNING: Final two peak heights differ by more than desired error tolerance. Consider solving over a greater range of values or choose a different initial guess')
 
     return Orbit(period, max_height, min_height)
+
+
+##############    CONTINUATION         ########################################
+
+def continuation(func, u0, par0, vary_par=0, step_size=0.01, max_steps=100, discretisation=shooting, solver = fsolve):
+
+    varied_params = []
+
+    # Constructing some params to feed into the solver
+    if type(par0) == list:
+        for i in range(max_steps):
+            point = []
+            for j in range(len(par0)):
+                if j == vary_par:
+                    point.append(par0[j] + i * step_size)
+                else:
+                    point.append(par0[j])
+            varied_params.append(point)
+    else:
+        for i in range(max_steps):
+            point = par0 + i * step_size
+            varied_params.append(point)
+
+    # Initialise list of roots
+    roots = []
+
+    # Solve system for the roots
+    for val in varied_params:
+        u0 = solver(discretisation(func), u0, args=val)
+        roots.append(u0)
+
+    # Initialise list of initial conditions
+    if type(par0) == list:
+        iv = []
+        for point in varied_params:
+            iv.append(point[vary_par])
+    else:
+        iv = varied_params
+
+    return iv, roots
 
 ###############         ERROR FINDER    #######################################
 def get_abs_err_av(tl, sol, func):
