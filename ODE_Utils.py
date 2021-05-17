@@ -112,7 +112,7 @@ class Shot_Sol(object):
         self.ics = ics
         self.period = period
 
-def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', *args, **kwargs):
+def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='max', **params):
     """
     A function that uses numerical shooting to find limit cycles of
     a specified ODE.
@@ -140,9 +140,9 @@ def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', *args, **k
         would pass a 1. Defaults to zero
 
     cond : string or float, optional
-        Defaults to 'min' which starts the solution at it's minimum value.
-        Similarly, if 'max' is passed, the selected equation solution will start
-        at a maximum.
+        Defaults to 'max' which starts the solution at it's maximum value.
+        Similarly, if 'min' is passed, the selected equation solution will start
+        at a minimum.
 
         If a float is passed, the selected equation will start at the float
         value. If outside the range, the closest of the max or min will be
@@ -156,14 +156,12 @@ def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', *args, **k
     """
 
     try:
-        print(u0)
-        print(*args)
-        func(0, u0, params=args)
+        func(0, u0, **params)
     except:
         print('WARNING: initial conditions are of wrong dimension for your system.')
         exit()
 
-    tl, vl = solve_to(func, 0, t2, u0, **kwargs)
+    tl, vl = solve_to(func, 0, t2, u0, **params)
     orbit = isolate_orbit(tl, vl[condeq])
     period = orbit.period
 
@@ -182,7 +180,7 @@ def shooting(func, u0, t2=1000, xtol=1.0e-01, condeq = 0, cond='min', *args, **k
 
     def F(u0, T):
         # Grab the last value of the solve
-        tl, vl = solve_to(func, 0, T, u0, **kwargs)
+        tl, vl = solve_to(func, 0, T, u0, **params)
         return np.array([v[-1] for v in vl])
 
     def G(u0):

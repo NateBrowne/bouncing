@@ -1,7 +1,7 @@
 from loguru import logger
 import numpy as np
 import matplotlib.pyplot as plt
-from ODE_Utils import *
+from ODE_Utils2 import *
 
 #set up the ode system in one function
 def dvdt(t, vect, b=2., s=-1.):
@@ -50,14 +50,28 @@ def known_sol_test(tl, vl, phase, errtol=1e-02):
 
 def test_3D_system():
     try:
-        u0 = np.array([10, 10, 10])
+        u0 = np.array([.1, .1, .1])
+        t_guess = 5.
         tl, vl = solve_to(dv2dt, 0, 100, u0)
-        period = isolate_orbit(tl, vl[0]).period
 
-        ics = shooting(dv2dt, u0).ics
-        #print('New ICs: ', ics[0], ', ', ics[1], ', ', ics[2])
+        shot = shoot_root(dv2dt, u0, t_guess, condeq=1)
+        ics = shot.ics
+        period = shot.period
+
         tl, vl = solve_to(dv2dt, 0, period, ics)
         print('3D SYSTEM:      Test passed')
+
+        #### PLOT system wrt time
+        plt.plot(tl, vl[0], label='x')
+        plt.plot(tl, vl[1], label='y')
+        plt.plot(tl, vl[2], label='z')
+        plt.ylabel('Value')
+        plt.xlabel('Time')
+        plt.grid()
+        plt.title('Test System')
+        plt.legend()
+        plt.show()
+
     except:
         print('3D SYSTEM:      Test failed')
 
@@ -67,7 +81,6 @@ def test_dimension_err():
         shot = shooting(dv2dt, u0)
         ics = shot.ics
         period = shot.period
-        #print('New ICs: ', ics[0], ', ', ics[1], ', ', ics[2])
         tl, vl = solve_to(dv2dt, 0, period, ics)
         print('DIM ERR:        Test failed')
     except:
@@ -77,9 +90,10 @@ def test_dimension_err():
 def main():
 
     # # Known solution test
-    u0 = np.array([10, 10])
-    tl, vl = solve_to(dvdt, 0, 100, u0)
-    period = isolate_orbit(tl, vl[0]).period
+    u0 = np.array([.7, 1.])
+    t_guess = 5.
+    # tl, vl = solve_to(dvdt, 0, 100, u0)
+    # period = isolate_orbit(tl, vl[0]).period
     # #### PLOT system wrt time
     # plt.plot(tl, vl[0], label='x')
     # plt.plot(tl, vl[1], label='y')
@@ -97,54 +111,35 @@ def main():
     # plt.title('Phase portrait')
     # plt.grid()
     # plt.show()
-    #
-    phase = 0
-    shot = shooting(dvdt, u0, cond='max')
-    tl, vl = solve_to(dvdt, 0, shot.period, shot.ics)
-    #
-    # #### PLOT system wrt time
-    # # test(tl, vl, phase)
-    # plt.plot(tl, vl[0], label='x')
-    # plt.plot(tl, vl[1], label='y')
-    # plt.ylabel('Value')
-    # plt.xlabel('Time')
-    # plt.grid()
-    # plt.title('Test System')
-    # plt.legend()
-    # plt.show()
-    #
-    print('\n')
 
-    err = known_sol_test(tl, vl, phase)
-    # #### PLOT orbit
-    # plt.plot(vl[0], vl[1], label='Shot orbit')
-    # plt.xlabel('x')
-    # plt.ylabel('y')
-    # plt.title('Phase portrait with error of ' + str(err))
-    # plt.grid()
-    # plt.legend()
-    # plt.show()
+    shot = shoot_root(dvdt, u0, t_guess)
+    print('Period found: ', shot.period)
+    tl, vl = solve_to(dvdt, 0, shot.period, shot.ics)
+
+    #### PLOT system wrt time
+    plt.plot(tl, vl[0], label='x')
+    plt.plot(tl, vl[1], label='y')
+    plt.ylabel('Value')
+    plt.xlabel('Time')
+    plt.grid()
+    plt.title('Test System')
+    plt.legend()
+    plt.show()
+
+    phase = 0
+
+    known_sol_test(tl, vl, phase)
+    #### PLOT orbit
+    plt.plot(vl[0], vl[1], label='Shot orbit')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.title('Phase portrait')
+    plt.grid()
+    plt.legend()
+    plt.show()
 
     ##########  3d test ############################################
     test_3D_system()
-
-    # #### PLOT system wrt time
-    # plt.plot(tl, vl[0], label='x')
-    # plt.plot(tl, vl[1], label='y')
-    # plt.plot(tl, vl[2], label='z')
-    # plt.ylabel('Value')
-    # plt.xlabel('Time')
-    # plt.grid()
-    # plt.title('Test System')
-    # plt.legend()
-    # plt.show()
-    #
-    # plt.scatter(vl[0], vl[1], label='Shot orbit', c=vl[2])
-    # plt.xlabel('x')
-    # plt.ylabel('y')
-    # plt.title('Phase portrait')
-    # plt.grid()
-    # plt.show()
 
     test_dimension_err()
 
