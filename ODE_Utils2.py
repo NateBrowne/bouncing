@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.optimize import fsolve, fmin
+from scipy.sparse import diags, csr_matrix
+from scipy.sparse.linalg import spsolve
 import warnings
 import sys
 from functools import reduce
@@ -22,7 +24,6 @@ def rk4_step(func, t, v, h, **params):
     return t, v
 
 ################    RESCALING           #######################################
-
 def rescale_dt(t1, t2, deltat_max):
     if deltat_max % (t2-t1) != 0:
         deltat_max = (t2-t1) / np.ceil((t2-t1) / deltat_max)
@@ -55,10 +56,10 @@ def solve_to(func, t1, t2, v, deltat_max_orig=0.01, method=rk4_step, **params):
     vl = np.transpose(vl)
     return tl, vl
 
-# Wrapper class for returns of solve_ode function
-# the estimates are the last vector values
-# the tracings are the full solves
 class Solved_ODE(object):
+    # Wrapper class for returns of solve_ode function
+    # the estimates are the last vector values
+    # the tracings are the full solves
     def __init__(self, stepsizes, tls, sols):
         estimates = {}
         tracings = {}
@@ -70,7 +71,7 @@ class Solved_ODE(object):
         self.estimates = estimates
         self.tracings = tracings
 
-def solve_ode(func, t1, t2, v0, stepsizes=[1., .1, .01], **params):
+def solve_ode(func, t1, t2, v0, stepsizes=[1., .1, .01], method=rk4_step, **params):
 
     """
     A function that solves an ODE between two bounds for a variety of stepsizes.
@@ -121,7 +122,7 @@ def solve_ode(func, t1, t2, v0, stepsizes=[1., .1, .01], **params):
     tls = []
     sols = []
     for size in stepsizes:
-        tl, sol = solve_to(func, t1, t2, v0, deltat_max_orig=size, **params)
+        tl, sol = solve_to(func, t1, t2, v0, deltat_max_orig=size, method=method, **params)
         tls.append(tl)
         sols.append(sol)
 
@@ -129,13 +130,13 @@ def solve_ode(func, t1, t2, v0, stepsizes=[1., .1, .01], **params):
 
 ################     SHOOTING METHOD     ######################################
 
-# Wrapper class for returns from the shooting method
 class Shot_Sol(object):
+    # Wrapper class for returns from the shooting method
     def __init__(self, ics, period):
         self.ics = ics
         self.period = period
 
-def shooting(func, u0, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, **params):
+def shooting(func, u0, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, method='natural', **params):
 
     """
     A function that discretises a function to a shooting function.
@@ -172,6 +173,12 @@ def shooting(func, u0, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, **pa
     G : function
         The shooting discretisation function
     """
+    # Dimension check
+    # try:
+    #     func(0, u0, **params)
+    # except:
+    #     print('WARNING: initial conditions are of wrong dimension for your system.')
+    #     exit()
 
     def F(u0):
         tl, vl = solve_to(func, 0, u0[0], u0[1:], deltat_max, **params)
@@ -385,7 +392,6 @@ def continuation(func, u0, t_guess, step_size=0.01, max_steps=100, discretisatio
 
     return iv, np.transpose(roots)
 
-
 ################     DOESN'T WORK      ##################################
 def pseudo_shooting(func, v1, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, **params):
 
@@ -448,3 +454,112 @@ def get_abs_err_av(tl, sol, func):
     for i in range(len(tl)):
         errors.append(abs(func(tl[i]) - sol[i]))
     return np.mean(errors)
+
+#####################       PDES         #####################################
+def tridiagonal(n, lmbda, direction='cn'):
+    offset = [-1,0,1]
+    if direction == 'cn':
+        k1 = np.array([-.5*lmbda*np.ones(n-1), (1+lmbda)*np.ones(n), -.5*lmbda*np.ones(n-1)])
+        k2 = np.array([.5*lmbda*np.ones(n-1), (1-lmbda)*np.ones(n), .5*lmbda*np.ones(n-1)])
+        A = csr_matrix(diags(k1,offset).toarray()) # have to be csr for spsolve
+        B = csr_matrix(diags(k2,offset).toarray())
+        return A, B
+    else:
+        if direction == 'fe':
+            k = np.array([lmbda*np.ones(n-1), (1-2*lmbda)*np.ones(n), lmbda*np.ones(n-1)])
+        elif direction == 'be':
+            k = np.array([-1*lmbda*np.ones(n-1), (1+2*lmbda)*np.ones(n), -1*lmbda*np.ones(n-1)])
+        A = diags(k, offset).toarray()
+        return A
+
+def var_tridiagonal(n, kappa, x, deltat, deltax):
+
+    lmbda = deltat / (deltax**2)
+    A = []
+
+    for i in range(n):
+        new_row = np.zeros(n)
+        one = kappa * (x[i] - deltax/2)
+        two = kappa * (x[i] + deltax/2)
+        if i == 0:
+            new_row[0] = 1 - lmbda * (one + two)
+            new_row[1] = lmbda * two
+        elif i == n-1:
+            new_row[-2] = lmbda * one
+            new_row[-1] = 1 - lmbda * (one + two)
+        else:
+            new_row[i-1] = lmbda * one
+            new_row[i] = 1 - lmbda * (one + two)
+            new_row[i+1] = lmbda * two
+        A.append(new_row)
+
+    return np.array(A)
+
+def solve_diffusion_pde(init_func, mx, nt, kappa, L, T, ext=None, bounds=(0,0), neu_bounds=(0,0), direction='cn', rhs_fn=None):
+
+    # Set up the numerical environment variables
+    x = np.linspace(0, L, mx+1) # mesh points in space
+    t = np.linspace(0, T, nt+1) # mesh points in time
+    deltax = x[1] - x[0] # gridspacing in x
+    deltat = t[1] - t[0] # gridspacing in t
+
+    lmbda = kappa*deltat/(deltax**2)    # mesh fourier number
+
+    print("deltax=", deltax)
+    print("deltat=", deltat)
+    print("lambda=", lmbda)
+
+    u_j = np.zeros(mx+1)
+    # get the initial vector
+    for i in range(0, mx+1):
+        u_j[i] = init_func(x[i])
+
+    extra = np.zeros(mx+1)
+
+    if ext == 'NHD': # non-homo-dirichlet
+        A = tridiagonal(mx+1, lmbda, direction)
+
+        r_vec = np.zeros(u_j.size)
+        r_vec[0] = bounds[0]
+        r_vec[-1] = bounds[1]
+
+        extra = lmbda * r_vec
+
+    elif ext == 'NEU': # Neuman
+        A = tridiagonal(mx+1, lmbda, direction)
+        A[0, 1] = A[0, 1] * 2
+        A[-1, -2] = A[-1, -2] * 2
+
+        u_j[0] = bounds[0]
+        u_j[-1] = bounds[1]
+
+        neu = np.zeros(mx+1)
+        neu[0] = neu_bounds[0]
+        neu[-1] = neu_bounds[1]
+
+        extra = 2 * lmbda * deltax * neu
+
+    elif ext == 'periodic': # Periodic boundary condition
+        A = tridiagonal(mx+1, lmbda, direction)
+        A[0, -1] = A[-1, 0] = A[0, 1]
+        u_j[0] = bounds[0]
+        u_j[-1] = bounds[1]
+
+    elif ext == 'var_coef': # varied coefficient
+        A = var_tridiagonal(mx+1, kappa, x, deltat, deltax)
+    else:
+        A = tridiagonal(mx+1, lmbda, direction)
+
+    if rhs_fn != None:
+        rhs = np.zeros(mx+1)
+        for i in range(0, mx+1):
+            rhs[i] = rhs_fn(x[i])
+        extra = deltat * rhs
+
+    if direction == 'cn':
+        # redefine if necessary to get two matrices
+        A, B = tridiagonal(mx+1, lmbda, direction)
+        # then use the spsolve
+        return x, spsolve(A, B @ u_j + extra)
+    else:
+        return x, A @ u_j + extra

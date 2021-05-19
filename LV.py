@@ -42,7 +42,7 @@ def main():
     # plt.show()
 
     # guess the right ICs
-    u0 = np.array([.1, .1])
+    u0 = np.array([.7, .2])
     t_guess = 30.
 
     # find the right ICs that lead to the same period orbit as earlier
