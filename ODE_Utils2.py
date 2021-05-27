@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.optimize import fsolve, fmin
 from scipy.sparse import diags, csr_matrix
 from scipy.sparse.linalg import spsolve
@@ -136,7 +137,7 @@ class Shot_Sol(object):
         self.ics = ics
         self.period = period
 
-def shooting(func, u0, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, method='natural', **params):
+def shooting(func, u0, condeq = 0, cond='extrema', deltat_max=.01, **params):
 
     """
     A function that discretises a function to a shooting function.
@@ -181,7 +182,7 @@ def shooting(func, u0, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, meth
     #     exit()
 
     def F(u0):
-        tl, vl = solve_to(func, 0, u0[0], u0[1:], deltat_max, **params)
+        tl, vl = solve_to(func, 0, u0[0], u0[1:], **params)
         return vl[:, -1]
 
     def phi(u0):
@@ -199,7 +200,7 @@ def shooting(func, u0, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, meth
 
     return G
 
-def shoot_root(func, u0, t_guess, discretisation=shooting, xtol=1.0e-10, **params):
+def shoot_root(func, u0, t_guess, check_t_guess=True, check_len=2000, discretisation=shooting, xtol=1.0e-10, **params):
     """
     A function that uses numerical shooting to find limit cycles of
     a specified ODE.
@@ -245,6 +246,11 @@ def shoot_root(func, u0, t_guess, discretisation=shooting, xtol=1.0e-10, **param
     returned array is empty.
     """
 
+    if check_t_guess == True:
+        tl, vl = solve_to(func, 0, check_len, u0)
+        t_guess = isolate_orbit(tl, vl[0])[0].period
+        print('suggested period: ', t_guess)
+
     u0 = np.append([t_guess], u0)
     new_vect = fsolve(discretisation(func, u0, **params), u0, xtol=xtol)
 
@@ -262,7 +268,7 @@ class Orbit(object):
         self.max_height = max_height
         self.min_height = min_height
 
-def isolate_orbit(iv, dv, peak_tol=0.001, **kwargs):
+def isolate_orbit(iv, dv, peak_tol=0.001):
     """
     A function that identifies parameters of a period oscillation in a specified ODE.
 
@@ -337,6 +343,8 @@ def isolate_orbit(iv, dv, peak_tol=0.001, **kwargs):
 
     return Orbit(period, max_height, min_height), warning
 
+#############    CONTINUATION         ########################################
+
 def param_discretise(func, x, **params):
 
     # A function which constrains a function at a particular parameter. Works similar to lambda but is simpler
@@ -368,9 +376,7 @@ def vary_params(max_steps, step_size, direction, **params):
 
     return to_vary, varied_params
 
-#############    CONTINUATION         ########################################
-def continuation(func, u0, t_guess, step_size=0.01, max_steps=100, discretisation=shooting, solver=fsolve, direction=1, **params):
-
+def continuation(func, u0, t_guess, step_size=0.01, max_steps=100, discretisation=shooting, solver=fsolve, direction=1, plot=False, **params):
     # User can specify discretisation=param_discretise if they wish to keep the function the same i.e. lambda x:x
 
     # In the **params, as long as they are set after the param to vary, the user can specify other args such as, for shooting, deltat_max if they wish to speed up computation, though this may decrease accuracy.
@@ -390,63 +396,60 @@ def continuation(func, u0, t_guess, step_size=0.01, max_steps=100, discretisatio
         iv.append(val[to_vary])
         roots.append(u0)
 
-    return iv, np.transpose(roots)
+    roots = np.transpose(roots)
 
-################     DOESN'T WORK      ##################################
-def pseudo_shooting(func, v1, t2=1000, condeq = 0, cond='extrema', deltat_max=.01, **params):
+    if plot==True:
+        for item in roots:
+            plt.plot(iv, item)
+        plt.ylabel('root')
+        plt.xlabel('parameter')
+        plt.show()
 
-    params[list(params.keys())[0]] = v1[0]
+    return iv, roots
 
-    def F(v1):
-        tl, vl = solve_to(func, 0, v1[1], v1[2:], deltat_max, **params)
-        return vl[:, -1]
+def pde_contin(func, kappa, L, T, mx, step_size=0.01, max_steps=100, plot=False, **params):
+    nts = []
+    kappas = []
+    nt = 1
 
-    def phi(v1):
-        return v1[2:][condeq] - cond
+    for i in range(max_steps):
+        x, u_jp1, u_j = solve_diffusion_pde(func, mx, nt, kappa, L, T, **params)
+        while False in np.isclose(u_jp1, u_j, atol=1e-3): # find the n
+            nt += 1
+            x, u_jp1, u_j = solve_diffusion_pde(func, mx, nt, kappa, L, T, **params)
 
-    def int_phi(v1):
-        return func(v1[1], v1[2:], **params)[condeq]
+        print('sol found: ', nt)
+        nts.append(nt)
+        kappas.append(kappa)
+        kappa += step_size
 
-    def G(v1):
-        if cond == 'extrema':
-            return np.append([int_phi(v1)], v1[2:] - F(v1))
-        else:
-            return np.append([phi(v1)], v1[2:] - F(v1))
+    if plot == True:
+        plt.plot(kappas, nts)
+        plt.ylabel('nt')
+        plt.xlabel('kappa')
+        plt.show()
 
-    return G
+    return kappas, nts
 
-def pseudo_eq_disc(v_true, v_est, secant):
-    def pseudo_eq(v_true):
-        return (v_true - v_est) * secant
-    return pseudo_eq
+####################     ARC LENGTH    ######################################
+def arc_len(func, u, v0, v1, **params):
 
-def pseudo_arc_cont(func, v0, v1, discretisation=pseudo_shooting, solver=fsolve, max_steps=20, **params):
+    params['b'] = u[0]
+    shoot_func = shooting(func, u[1:], **params)
+    result = shoot_func(u[1:])
+    print('result: ', result)
 
-    # In the **params, as long as they are set after the param to vary, the user can specify other args such as, for shooting, deltat_max if they wish to speed up computation, though this may decrease accuracy.
+    v1 = [v1[-2], v1[-1], v1[0]]
+    v0 = [v0[-2], v0[-1], v0[0]]
 
-    # Initialise list of roots
-    sols = []
-    to_vary = list(params.keys())[0]
-    val = params[to_vary]
+    secant = v1 - v0
+    guess = v1 + secant
+    new = [u[-2], u[-1], u[0]]
+    diff = new - guess
+    arclen = np.dot(diff, secant)
 
-    step = 0
-    while step < max_steps:
+    return np.concatenate(result, arclen)
 
-        secant = v1 - v0 # generate secant
-        val = val + secant[0] # increment param
-        params[to_vary] = val # ^what he said
-        pred = v1 + secant
-
-        new_func = discretisation(func, pred, **params) # shooting discretise
-        v_true = solver(new_func, v1, xtol=1e-10)
-        print(v_true)
-
-        sols.append(v_true)
-        v0 = v1 # move v0 along
-        v1 = v_true # move v1 along
-        step += 1 # increase step
-
-    return sols
 
 ###############         ERROR FINDER    #######################################
 def get_abs_err_av(tl, sol, func):
@@ -505,9 +508,9 @@ def solve_diffusion_pde(init_func, mx, nt, kappa, L, T, ext=None, bounds=(0,0), 
 
     lmbda = kappa*deltat/(deltax**2)    # mesh fourier number
 
-    print("deltax=", deltax)
-    print("deltat=", deltat)
-    print("lambda=", lmbda)
+    # print("deltax=", deltax)
+    # print("deltat=", deltat)
+    # print("lambda=", lmbda)
 
     u_j = np.zeros(mx+1)
     # get the initial vector
@@ -560,6 +563,6 @@ def solve_diffusion_pde(init_func, mx, nt, kappa, L, T, ext=None, bounds=(0,0), 
         # redefine if necessary to get two matrices
         A, B = tridiagonal(mx+1, lmbda, direction)
         # then use the spsolve
-        return x, spsolve(A, B @ u_j + extra)
+        return x, spsolve(A, B @ u_j + extra), u_j
     else:
-        return x, A @ u_j + extra
+        return x, A @ u_j + extra, u_j

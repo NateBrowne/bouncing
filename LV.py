@@ -14,6 +14,12 @@ def dvdt(t, vect, a = 1, b = .1, d = .1):
 
     return np.array([dxdt, dydt])
 
+def hopf_norm(t, vect, b=2., s=-1):
+    u1, u2 = vect
+    du1dt = b*u1 - u2 + s*u1*(u1**2 + u2**2)
+    du2dt = u1 + b*u2 + s*u2*(u1**2 + u2**2)
+    return np.array([du1dt, du2dt])
+
 @logger.catch
 def main():
 
@@ -42,17 +48,17 @@ def main():
     # plt.show()
 
     # guess the right ICs
-    u0 = np.array([.7, .2])
-    t_guess = 30.
+    u0 = np.array([.5, .2])
+    t_guess = 5.
 
     # find the right ICs that lead to the same period orbit as earlier
-    shot = shoot_root(dvdt, u0, t_guess)
+    shot = shoot_root(dvdt, u0, t_guess, b=.2)
     print('\nClosest ICs:')
     print('Prey:', shot.ics[0], ' Pred: ', shot.ics[1])
     print('Period:', shot.period)
 
     # solve the system with new ICs
-    tl, vl = solve_to(dvdt, 0, shot.period, shot.ics)
+    tl, vl = solve_to(dvdt, 0, shot.period, shot.ics, b=.2)
 
     #### PLOT system wrt time
     plt.plot(tl, vl[0], label='Prey')

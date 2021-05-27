@@ -1,34 +1,8 @@
 from loguru import logger
 import numpy as np
 import matplotlib.pyplot as plt
-from ODE_Utils import *
+from ODE_Utils3 import *
 from datetime import datetime
-
-#logger.add(sys.stdout, format = "{time} - {level} - {message}")
-
-def plot_sols(plot_sets):
-    for plot_set in plot_sets:
-        plt.plot(plot_set[0], plot_set[1], 'x-', label= plot_set[2])
-
-    plt.plot(np.linspace(0, 1, 100), np.exp(np.linspace(0, 1, 100)), label='Actual')
-    plt.legend()
-    #plt.yscale('log')
-    plt.show()
-def plot_errs(stepsize, err, method):
-    plt.plot(stepsize, err, 'ro-')
-    plt.yscale('log')
-    plt.xscale('log')
-
-    plt.ylabel('Average Absolute Error')
-    plt.xlabel('Step Size')
-
-    plt.title(method + ' Error vs. Step Size')
-
-    plt.grid()
-    plt.show()
-
-def plot_err_compare(stepsize, err, method):
-    plt.plot(stepsize, err, 'o-', label=method)
 
 #set up the ode - returns vdot in numpy array
 def dvdt(t, vect):
@@ -39,51 +13,43 @@ def dvdt(t, vect):
 def f_actual(t):
     return np.exp(t)
 
-steps = [1 * (10**(-1*i)) for i in range(4)] # Declare list of possible step
-                                             # sizes
-
-methods = ['Euler'] # List of methods to compare
-solutions = [] # Initialise solution set
-
-# We need to run this method for each solving method - Euler and RK4
 @logger.catch
 def main():
-    for method in methods:
-        # Grab a list of timestamps and solved values, init conds inside a list
-        tls, sols = solve_ode(dvdt, 0, 1, [1], steps, method)
 
-        # find the average absolute error for each stepsize and put in a list
-        errs = [get_abs_err_av(tls[i], sols[i], f_actual) for i in range(len(tls))]
-        # plot the errors for the stepsizes
-        # plot_errs(steps, errs, method)
-        # plot_err_compare(steps, errs, method)
+    steps = [1 * (10**(-1*i)) for i in range(5)] # Declare list of possible step sizes
+    methods = [euler_step, rk4_step] # List of methods to compare
 
-        for i in range(len(tls)):
+    # analytic solution
+    t_actual = np.linspace(0, 1, 1000)
+    x_actual = f_actual(t_actual)
 
-            name = (str(method) + ' ' + str(steps[i]) + '   Error: ' +
-                    str(get_abs_err_av(tls[i], sols[i], f_actual)))
+    ers = [] # list of errors for each method
 
-            solutions.append([tls[i], sols[i], name])
+    for method in methods: # loop through the methods
+        plt.title('Solve_ODE with ' + method.__name__)
+        plt.xlabel('t')
+        plt.ylabel('x')
+        plt.plot(t_actual, x_actual, label='Actual')
+        # solve and plot
+        solved = solve_ode(dvdt, 0, 1, [1], steps, method=method, plot=True)
 
-    plot_sols(solutions)
-    # plt.ylabel('Average Absolute Error')
-    # plt.xlabel('Step Size')
-    # plt.title('Error vs. Step Size')
-    #
-    # plt.yscale('log')
-    # plt.xscale('log')
-    # plt.legend()
-    # plt.grid()
-    # plt.show()
+        err = [] # create list of errs
+        for step in steps:
+            tl, vl = solved.tracings[step]
+            err.append(get_abs_err_av(tl, vl, f_actual)) # add the err
+        ers.append(err)
 
-    # SPEED COMPARE
-    # now = datetime.now()
-    # tl, vl = solve_to(dvdt, 0, 1, [1], 0.00009, 'Euler')
-    # print('time taken: ', datetime.now() - now)
-    #
-    # now = datetime.now()
-    # tl, vl = solve_to(dvdt, 0, 1, [1], 0.1)
-    # print('time taken: ', datetime.now() - now)
+    # error plot
+    for i in range(len(ers)):
+        plt.plot(steps, ers[i], 'o-', label=methods[i].__name__)
+
+    plt.grid()
+    plt.title('Error Comparison')
+    plt.ylabel('Error')
+    plt.xlabel('Step size')
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.show()
 
 if __name__ == "__main__":
     main()
