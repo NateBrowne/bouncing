@@ -491,7 +491,7 @@ def shoot_root(func, u0, solver=fsolve, xtol=1e-20, plot=False, period_find_len=
 
     # print('\nConvergence check: ', np.round(discret(shot), 12))
 
-    if False in np.isclose(discret(shot), np.array([.0, .0, .0]), atol=1e-12):
+    if False in np.isclose(discret(shot), np.zeros(shot.shape), atol=1e-12):
         print('WARNING: Numerical root finder has not convereged. Try using different initial conditions.\nAlternatively, you may have entered an invalid phase condition or there are no limit cycles to be found here.')
         exit()
 
@@ -1004,7 +1004,7 @@ def var_tridiagonal(n, kappa, x, deltat, deltax, direction='be', **kwargs):
 
     return np.array(Ae)
 
-def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_bounds=(0,0), direction='cn', rhs_fn=None, **kwargs):
+def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_bounds=(0,0), direction='cn', rhs_fn=None):
 
     """
     A function that solves a function by a given method between two bounds given a set of initial conditions
@@ -1042,6 +1042,12 @@ def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_
     neu_bounds : tuple of size (2, 1), floats, optional
         the boundary values of the solve in order (t_0, t_end), default (0, 0)
 
+    direction : string, optional
+        default 'cn' for Crank Nicholson
+
+    rhs_func : function, optional
+        function to use in rhs when contructing problem, default none
+
     Returns
     -------
 
@@ -1049,7 +1055,6 @@ def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_
         The next state vector
 
     """
-
 
     deltax = x[1] - x[0] # gridspacing in x
     deltat = t[1] - t[0] # gridspacing in t
@@ -1061,15 +1066,15 @@ def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_
         A = tridiagonal(mx+1, lmbda, direction)
 
         r_vec = np.zeros(u_j.size)
-        r_vec[0] = bounds[0]
-        r_vec[-1] = bounds[1]
+        r_vec[0] = u_j[0] = bounds[0]
+        r_vec[-1] = u_j[-1] = bounds[1]
 
         extra = lmbda * r_vec
 
     elif ext == 'NEU': # Neuman
         A = tridiagonal(mx+1, lmbda, direction)
-        A[0, 1] = A[0, 1] * 2
-        A[-1, -2] = A[-1, -2] * 2
+        A[0][1] = A[0][1] * 2
+        A[-1][-2] = A[-1][-2] * 2
 
         u_j[0] = bounds[0]
         u_j[-1] = bounds[1]
@@ -1082,7 +1087,7 @@ def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_
 
     elif ext == 'periodic': # Periodic boundary condition
         A = tridiagonal(mx+1, lmbda, direction)
-        A[0, -1] = A[-1, 0] = A[0, 1]
+        A[0][-1] = A[-1][0] = A[0][1]
         u_j[0] = bounds[0]
         u_j[-1] = bounds[1]
 
@@ -1105,24 +1110,90 @@ def solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, ext=None, bounds=(0,0), neu_
     else:
         return A @ u_j + extra
 
-def steady_state(u_j, mx, nt, kappa, L, T_start, step_size=.01, tol=1e-2, max_steps=200, **kwargs):
+def steady_state(u_j, mx, nt, kappa_range, L, T, tol=1e-3, show_progress=False, plot=False, **kwargs):
 
-    step = 0
-    T = T_start
+    """
+    A function that finds steady states of a system by iterating through diffusion coefficient bounds.
 
-    while step < max_steps:
-        print('step: ', step+1, 'T: ', T, end='\r')
+    Parameters
+    ----------
 
-        x = np.linspace(0, L, mx+1) # mesh points in space
-        t = np.linspace(0, T, nt+1) # mesh points in time
+    u_j : numpy array
+        Numpy array that describes the initial heat distribution
 
-        u_jp1 = solve_diffusion_pde(u_j, x, t, mx, nt, kappa, L, T, **kwargs)
+    mx : numpy array
+        spacial domain linspace
 
-        if False in np.isclose(u_j, u_jp1, rtol=tol):
-            T += step_size
-            u_j = u_jp1
-            step += 1
-        else:
-            break
+    nt : numpy array
+        time domain linspace
 
-    return T
+    kappa_range : numpy array linspace
+        range of diffusion coefficients to test over
+
+    L : float
+        length of spatial domain
+
+    T : float
+        total time to solve for
+
+    tol : float, optional
+            Tolerance between closeness of solutions to determine a steady state has been reached
+
+    show_progress : boolean, optional
+        If set to true, a full breakdown of processes is displayed
+
+    plot : boolean, optional
+        If set to true, the solutions are plotted to the user.
+
+    kwargs : additional keyword arguments
+        to be passed through to solve pde, might be direction, etc.
+
+    Returns
+    -------
+    t_sols: numpy array
+        The time values at which the steady state is reached for each diffusion value
+    """
+
+    x = np.linspace(0, L, mx+1) # mesh points in space
+    t = np.linspace(0, T, nt+1) # mesh points in time
+
+    u_j_orig = u_j
+    t_sols = []
+    start_time = datetime.now()
+
+    for kappa in kappa_range:
+        step = 0
+        u_j = u_j_orig
+
+        if show_progress == True:
+            print('\n')
+
+        while step < nt:
+            print(str(datetime.now()-start_time)[2:11], '    nt: ', step+1, '   Kappa: ', kappa, end='\r')
+            u_jp1 = solve_diffusion_pde(u_j, x, t, mx, kappa, L, T, **kwargs)
+
+            if False in np.isclose(u_j, u_jp1, rtol=tol):
+                u_j = u_jp1
+                step += 1
+            else:
+                t_sols.append(t[step])
+                break
+
+            if step == nt:
+                print('\nNo steady state found; terminating')
+                for i in range(len(kappa_range) - len(t_sols)):
+                    t_sols.append(None)
+                if plot == True:
+                    plt.xlabel('Kappa')
+                    plt.ylabel('Time to reach steady state')
+                    plt.plot(kappa_range, t_sols)
+                    plt.show()
+                return np.array(t_sols)
+
+    if plot == True:
+        plt.xlabel('Kappa')
+        plt.ylabel('Time to reach steady state')
+        plt.plot(kappa_range, t_sols)
+        plt.show()
+
+    return np.array(t_sols)
